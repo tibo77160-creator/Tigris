@@ -13,6 +13,10 @@
           "run": "mkdir -p ~/.android; if [ -n \"$KS\" ]; then echo \"$KS\" | base64 -d > ~/.android/debug.keystore; echo 'Cle fixe utilisee'; else echo 'Pas de secret : cle temporaire (une mise a jour demandera de desinstaller)'; fi"
         },
         {
+          "name": "Fond montagnes (photo du projet Plume, Unsplash)",
+          "run": "mkdir -p app/src/main/res/drawable-nodpi && curl -fsSL -o app/src/main/res/drawable-nodpi/wall_rockies.jpg https://raw.githubusercontent.com/aradhyas8/Plume_Launcher/3c439a0/app/src/main/res/drawable-nodpi/wallpaper_dark.jpg && ls -la app/src/main/res/drawable-nodpi"
+        },
+        {
           "name": "Compiler",
           "run": "chmod +x gradlew && ./gradlew assembleStandardRelease --no-daemon --console=plain --stacktrace"
         },
