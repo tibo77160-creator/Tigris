@@ -7,6 +7,11 @@ import android.content.SharedPreferences
 class Prefs(ctx: Context) {
     private val sp: SharedPreferences = ctx.getSharedPreferences("tvhome", Context.MODE_PRIVATE)
 
+    /** One-time defaults already applied (dock order, background) for this build. */
+    var setupVersion: Int
+        get() = sp.getInt("setup_version", 0)
+        set(v) = sp.edit().putInt("setup_version", v).apply()
+
     var order: List<String>
         get() = sp.getString("order", "")!!.split(',').filter { it.isNotEmpty() }
         set(v) = sp.edit().putString("order", v.joinToString(",")).apply()
@@ -35,7 +40,7 @@ class Prefs(ctx: Context) {
 
     /** One of [Backgrounds.THEMES] keys, or a rotating photo source: "daily" (Bing) or "anime" (Wallhaven). */
     var background: String
-        get() = sp.getString("background", "daily")!!
+        get() = sp.getString("background", "rockies")!!
         set(v) = sp.edit().putString("background", v).apply()
 
     /** Minutes between background photo changes. */
@@ -113,20 +118,20 @@ class Prefs(ctx: Context) {
 
         /** Initial grid order on first run; everything else follows alphabetically. */
         val DEFAULT_ORDER = listOf(
-            "com.xiaodianshi.tv.yst",
-            "com.ktcp.video",
-            "com.starcor.mango",
-            "com.liskovsoft.smarttubetv.beta",
-            "com.douyu.xl.douyutv",
-            "com.huya.nftv",
-            "com.fongmi.android.tv",
-            "com.github.tvbox.osc.tk",
-            "org.xbmc.kodi",
-            "com.quark.yun.tv",
-            "com.dangbei.screencast",
+            // The dock (first row of 6).
+            "com.netflix.ninja",
+            "com.amazon.amazonvideo.livingroom",
+            "com.google.android.youtube.tv",
+            "com.disney.disneyplus",
+            "com.crunchyroll.crunchyroid",
+            "com.apple.atve.androidtv.appletv",
+            // Just below.
             "tv.twitch.android.app",
-            "com.limelight",
-            "com.limelight.qiin",
+            "com.stremio.one",
+            "fr.bouyguestelecom.tv.bbui",
+            "fr.francetv.pluzz",
+            "fr.m6.m6replay",
+            "fr.tf1.mytf1",
             "com.android.tv.settings",
         )
     }
