@@ -332,7 +332,15 @@ class Wallpapers(private val ctx: Context, private val source: String = BING) {
 /** The soft multi-colour gradients tvOS 26 uses behind the home grid. */
 object Backgrounds {
     /** key -> (label, colour blobs as x, y, radius (fractions of width), colour). */
+    /** Set by HomeActivity: needed to read the built-in mountain picture. */
+    @Volatile var app: Context? = null
+
     val THEMES: LinkedHashMap<String, Pair<String, List<Blob>>> = linkedMapOf(
+        // The dark mountains at dusk (built-in photo, see render); the blobs are only a fallback.
+        "rockies" to ("Montagnes (soir)" to listOf(
+            Blob(0.30f, 0.10f, 0.70f, 0xFF2A2E36.toInt()),
+            Blob(0.80f, 0.05f, 0.60f, 0xFF3A3F48.toInt()),
+        )),
         "green" to ("Vert" to listOf(
             Blob(0.10f, 0.35f, 0.75f, 0xFF0B7A2E.toInt()),
             Blob(0.48f, -0.05f, 0.70f, 0xFF02B43C.toInt()),
@@ -369,6 +377,9 @@ object Backgrounds {
 
     /** Rendered small; the ImageView's bilinear upscale keeps it perfectly smooth. */
     fun render(key: String): Bitmap {
+        if (key == "rockies") app?.let { ctx ->
+            runCatching { BitmapFactory.decodeResource(ctx.resources, R.drawable.wall_rockies) }.getOrNull()?.let { return it }
+        }
         val blobs = (THEMES[key] ?: THEMES.getValue("green")).second
         val w = 480
         val h = 270
