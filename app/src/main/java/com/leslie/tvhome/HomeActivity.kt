@@ -84,7 +84,7 @@ class HomeActivity : Activity(), TileAdapter.Listener {
     private val io = Executors.newSingleThreadExecutor()
     private val sheets = ArrayList<Sheet>()
 
-    private val cols = 5
+    private val cols = 6
     private var tileW = 0
     private var tileH = 0
     private var rowPitch = 0
@@ -110,48 +110,20 @@ class HomeActivity : Activity(), TileAdapter.Listener {
     @Volatile private var homeDock: Bitmap? = null
     private var dockShown: Drawable? = null
 
-    /** Top Shelf: content of the focused dock app filling the screen above the dock. */
-    private lateinit var shelf: FrameLayout
-    private lateinit var shelfPics: FrameLayout
-    private var shelfFront: ImageView? = null
-    private lateinit var shelfSource: TextView
-    private lateinit var shelfTitle: TextView
-    private lateinit var shelfMeta: TextView
-    private lateinit var shelfInfo: LinearLayout
-    private lateinit var shelfDots: LinearLayout
-    private lateinit var shelfPlay: TextView
-    private lateinit var shelfBar: FrameLayout
-    private lateinit var shelfBarFill: View
-    /** Up from the dock moves into the shelf: Left/Right browse, OK plays, Down or Back returns. */
+    /** Top Shelf: the focused dock app's series in progress, as cards above the dock (Netflix / Apple style). */
+    private lateinit var shelfRow: ShelfRow
+    /** Up from the dock moves into the cards: Left/Right choose, OK plays, Down or Back returns. */
     private var shelfFocus = false
     /** Bands at the screen edges in the focused app's colour, which Ambilight ("follow video") picks up. */
     private lateinit var edges: EdgeGlow
     private val net = Executors.newFixedThreadPool(2)
     private var shelfPkg: String? = null
     private var pendingShelf: String? = null
-    private var shelfItems: List<Shelf.Item> = emptyList()
-    private var shelfIndex = 0
     private var shelfShown = false
-    private var shelfFade: ValueAnimator? = null
-    private var shelfFrac = 0f
+    private val shelfItems get() = shelfRow.items
     private val shelfShow = Runnable { pendingShelf?.let { showShelf(it) } }
-    private val shelfAdvance = object : Runnable {
-        override fun run() {
-            if (!shelfShown || shelfFocus || shelfItems.size < 2) return
-            val pkg = shelfPkg ?: return
-            val next = (shelfIndex + 1) % shelfItems.size
-            val item = shelfItems[next]
-            net.execute {
-                val b = Shelf.image(this@HomeActivity, item.image)
-                main.post {
-                    if (shelfPkg == pkg && shelfShown) {
-                        if (b != null) showShelfItem(next, b)
-                        main.postDelayed(this, SHELF_SECONDS * 1000L)
-                    }
-                }
-            }
-        }
-    }
+    /** Kept for the lifecycle hooks; the cards no longer rotate on their own. */
+    private val shelfAdvance = Runnable {}
 
     /** Position being dragged in "edit home screen" mode, or -1. */
     private var moving = -1
@@ -199,6 +171,13 @@ class HomeActivity : Activity(), TileAdapter.Listener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = Prefs(this)
+        Backgrounds.app = applicationContext
+        if (prefs.setupVersion < 1) {
+            // First start of this version: the household's dock order and the dark mountains.
+            prefs.order = emptyList()
+            prefs.background = "rockies"
+            prefs.setupVersion = 1
+        }
         repo = AppRepo(this)
         buildViews()
         control = ControlCenter(this, root)
@@ -261,19 +240,23 @@ class HomeActivity : Activity(), TileAdapter.Listener {
 
         // Header: date + clock on the left, buttons on the right. It scrolls with the grid.
         header = FrameLayout(this).apply { clipChildren = false; clipToPadding = false }
-        dateText = text(20f, bold = true).apply { setShadowLayer(dp(8).toFloat(), 0f, 0f, Color.argb(60, 0, 0, 0)) }
+        dateText = text(17f, Color.argb(220, 255, 255, 255), weight = 500).apply { setShadowLayer(dp(8).toFloat(), 0f, 0f, Color.argb(90, 0, 0, 0)) }
         clockText = TextView(this).apply {
             setTextColor(Color.WHITE)
-            typeface = Fonts.inter(this@HomeActivity, 250)
-            textSize = 118f
+            typeface = Fonts.inter(this@HomeActivity, 300)
+            textSize = 44f
             includeFontPadding = false
             letterSpacing = -0.02f
         }
-        header.addView(dateText, FrameLayout.LayoutParams(-2, -2).apply {
-            leftMargin = side; topMargin = (sh * 0.197f).toInt()
-        })
-        header.addView(clockText, FrameLayout.LayoutParams(-2, -2).apply {
-            leftMargin = side - dp(4); topMargin = (sh * 0.243f).toInt()
+        // Small clock with the date beside it in the top-left corner: the space below is for the cards.
+        val clockRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.BOTTOM
+            addView(clockText)
+            addView(dateText, LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(16); bottomMargin = dp(7) })
+        }
+        header.addView(clockRow, FrameLayout.LayoutParams(-2, -2).apply {
+            leftMargin = side - dp(2); topMargin = (sh * 0.05f).toInt()
         })
         val icons = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -374,7 +357,7 @@ class HomeActivity : Activity(), TileAdapter.Listener {
             val glass = LiquidGlass.bake(bmp, sw, sh, dockRect, dockRadius).also { it.prepareToDraw() }
             homeDock = glass
             main.post {
-                if (!shelfShown) setDock(glass, 1200)
+                setDock(glass, 1200)
                 val old = bgPhoto
                 val next = android.graphics.drawable.BitmapDrawable(resources, bmp)
                 if (old == null) {
@@ -408,177 +391,59 @@ class HomeActivity : Activity(), TileAdapter.Listener {
     // ------------------------------------------------------------------- shelf
 
     private fun buildShelf(side: Int) {
-        shelf = FrameLayout(this).apply { alpha = 0f; visibility = View.INVISIBLE }
-        shelfPics = FrameLayout(this)
-        shelf.addView(shelfPics, FrameLayout.LayoutParams(-1, -1))
-        val shadow = { t: TextView -> t.setShadowLayer(dp(10).toFloat(), 0f, dp(1).toFloat(), Color.argb(150, 0, 0, 0)) }
-        shelfSource = text(16f, Color.argb(200, 255, 255, 255), weight = 600).also(shadow)
-        shelfTitle = text(38f, weight = 700).apply {
-            maxLines = 2
-            ellipsize = android.text.TextUtils.TruncateAt.END
-            setLineSpacing(0f, 1.08f)
-        }.also(shadow)
-        shelfMeta = text(17f, Color.argb(210, 255, 255, 255), weight = 500).apply { maxLines = 1 }.also(shadow)
-        shelfBarFill = View(this).apply { background = rounded(Color.WHITE, dp(2).toFloat()) }
-        shelfBar = FrameLayout(this).apply {
-            background = rounded(Color.argb(90, 255, 255, 255), dp(2).toFloat())
-            addView(shelfBarFill, FrameLayout.LayoutParams(0, -1))
-        }
-        shelfPlay = text(17f, weight = 600).apply {
-            setPadding(dp(22), dp(10), dp(22), dp(10))
-            background = rounded(Color.argb(70, 255, 255, 255), dp(22).toFloat())
-        }
-        shelfInfo = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            addView(shelfSource)
-            addView(shelfTitle, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
-            addView(shelfMeta, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(10) })
-            addView(shelfBar, LinearLayout.LayoutParams(dp(SHELF_BAR_DP), dp(4)).apply { topMargin = dp(14) })
-            addView(shelfPlay, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(18) })
-        }
-        val above = sh - dockRect.top + dp(30)
-        shelf.addView(shelfInfo, FrameLayout.LayoutParams((sw * 0.56f).toInt(), -2, Gravity.BOTTOM or Gravity.START).apply {
-            leftMargin = side; bottomMargin = above
-        })
-        shelfDots = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        shelf.addView(shelfDots, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END).apply {
-            rightMargin = side; bottomMargin = above + dp(4)
-        })
-        root.addView(shelf, FrameLayout.LayoutParams(-1, -1))
+        shelfRow = ShelfRow(this, sw, sh, side, dockRect.top)
+        root.addView(shelfRow, FrameLayout.LayoutParams(-1, -1))
     }
 
     private fun showShelf(pkg: String) {
         shelfPkg = pkg
         val label = adapter.apps.firstOrNull { it.pkg == pkg }?.label ?: ""
         net.execute {
-            val items = Shelf.items(this, pkg, label)
-            val first = items.firstOrNull()?.let { Shelf.image(this, it.image) }
+            val items = Shelf.items(this, pkg, label).take(3)
             main.post {
-                if (shelfPkg != pkg || first == null) return@post
-                shelfItems = items
-                shelfDots.removeAllViews()
-                repeat(items.size) {
-                    shelfDots.addView(View(this).apply { background = rounded(Color.WHITE, dp(4).toFloat()) },
-                        LinearLayout.LayoutParams(dp(7), dp(7)).apply { marginStart = dp(7) })
-                }
-                showShelfItem(0, first)
+                if (shelfPkg != pkg) return@post
+                if (items.isEmpty()) { setShelfVisible(false); return@post }
+                setShelfFocus(false)
+                shelfRow.fill(items.first().kicker, items)
                 setShelfVisible(true)
-                main.removeCallbacks(shelfAdvance)
-                main.postDelayed(shelfAdvance, SHELF_SECONDS * 1000L)
+                for ((card, url) in shelfRow.cardTargets()) net.execute {
+                    val b = Shelf.thumb(this, url, card.w)
+                    main.post { if (shelfPkg == pkg) card.setImage(b) }
+                }
             }
         }
-    }
-
-    private fun showShelfItem(i: Int, b: Bitmap) {
-        val item = shelfItems.getOrNull(i) ?: return
-        shelfIndex = i
-        // The new picture fades in over the old one, settling from a slight zoom.
-        val old = shelfFront
-        val pic = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; setImageBitmap(b) }
-        shelfPics.addView(pic, FrameLayout.LayoutParams(-1, -1))
-        shelfFront = pic
-        pic.alpha = 0f
-        pic.scaleX = 1.04f; pic.scaleY = 1.04f
-        pic.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(if (old == null) 0 else 700).setInterpolator(Motion.ease)
-            .withEndAction { if (old != null) shelfPics.removeView(old) }.start()
-        shelfInfo.animate().cancel()
-        shelfInfo.alpha = 0f
-        shelfInfo.translationY = dp(10).toFloat()
-        shelfTitle.text = item.title
-        shelfMeta.text = item.meta
-        shelfSource.text = item.kicker.uppercase(Locale.FRANCE)
-        shelfMeta.visibility = if (item.meta.isEmpty()) View.GONE else View.VISIBLE
-        shelfBar.visibility = if (item.progress >= 0) View.VISIBLE else View.GONE
-        shelfBarFill.layoutParams = (shelfBarFill.layoutParams as FrameLayout.LayoutParams).apply {
-            width = dp(SHELF_BAR_DP) * item.progress.coerceIn(0, 100) / 100
-        }
-        shelfPlay.visibility = if (item.intent != null) View.VISIBLE else View.GONE
-        shelfPlay.text = if (item.progress >= 0) "▶  Reprendre" else "▶  Lire"
-        stylePlay()
-        shelfInfo.animate().alpha(1f).translationY(0f).setDuration(450).setStartDelay(150).start()
-        for (k in 0 until shelfDots.childCount) shelfDots.getChildAt(k).alpha = if (k == i) 1f else 0.35f
-        // The dock refracts the new picture.
-        val pkg = shelfPkg
-        io.execute {
-            // The picture already carries the scrim (see Shelf.darken).
-            val glass = LiquidGlass.bake(b, sw, sh, dockRect, dockRadius).also { it.prepareToDraw() }
-            main.post { if (shelfShown && shelfPkg == pkg && shelfIndex == i) setDock(glass, 600) }
-        }
-        // Fetch the next picture ahead of time.
-        shelfItems.getOrNull((i + 1) % shelfItems.size)?.let { n -> net.execute { Shelf.image(this, n.image) } }
     }
 
     private fun setShelfVisible(v: Boolean) {
         if (v == shelfShown) return
         shelfShown = v
-        if (v) shelf.visibility = View.VISIBLE else bg.visibility = View.VISIBLE
-        shelf.animate().cancel()
-        shelf.animate().alpha(if (v) 1f else 0f).setDuration(if (v) 500 else 350)
-            .withEndAction {
-                // The shelf covers the whole screen: stop drawing the photo underneath it.
-                if (shelfShown) bg.visibility = View.INVISIBLE
-                if (!shelfShown) {
-                    shelf.visibility = View.INVISIBLE
-                    shelfPics.removeAllViews()
-                    shelfFront = null
-                }
-            }.start()
-        // The clock gives way to the shelf.
-        shelfFade?.cancel()
-        shelfFade = ValueAnimator.ofFloat(shelfFrac, if (v) 1f else 0f).apply {
-            duration = 350
-            addUpdateListener {
-                shelfFrac = it.animatedValue as Float
-                clockText.alpha = 1f - shelfFrac
-                dateText.alpha = 1f - shelfFrac
-            }
-            start()
-        }
-        if (!v) homeDock?.let { setDock(it, 450) }
+        shelfRow.show(v)
     }
 
     private fun hideShelf() {
         setShelfFocus(false)
         main.removeCallbacks(shelfShow)
-        main.removeCallbacks(shelfAdvance)
         pendingShelf = null
         shelfPkg = null
         setShelfVisible(false)
     }
 
-    /** The play button lights up (white) while the shelf has the focus. */
-    private fun stylePlay() {
-        shelfPlay.background = rounded(if (shelfFocus) Color.WHITE else Color.argb(70, 255, 255, 255), dp(22).toFloat())
-        shelfPlay.setTextColor(if (shelfFocus) Color.BLACK else Color.WHITE)
-        val s = if (shelfFocus) 1.06f else 1f
-        shelfPlay.animate().scaleX(s).scaleY(s).setDuration(180).start()
-    }
-
     private fun setShelfFocus(on: Boolean) {
         if (shelfFocus == on) return
         shelfFocus = on
-        stylePlay()
-        // The dock tile steps back while the shelf has the focus, and lifts again when it returns.
+        shelfRow.setFocused(on)
+        // The dock tile steps back while the cards have the focus, and lifts again when it returns.
         (grid.findViewHolderForAdapterPosition(focusedPos)?.itemView as? TileCell)?.setFocusedLook(!on, 0, 0, showLabel = false)
-        main.removeCallbacks(shelfAdvance)
-        if (!on && shelfShown) main.postDelayed(shelfAdvance, SHELF_SECONDS * 1000L)
     }
 
-    /** Left/Right while the shelf has the focus: the previous or next item, right away. */
+    /** Left/Right while the cards have the focus. */
     private fun stepShelf(dx: Int) {
-        if (shelfItems.size < 2) return
-        val pkg = shelfPkg ?: return
-        val next = (shelfIndex + dx + shelfItems.size) % shelfItems.size
-        val item = shelfItems[next]
-        net.execute {
-            val b = Shelf.image(this, item.image)
-            main.post { if (shelfPkg == pkg && shelfShown && b != null) showShelfItem(next, b) }
-        }
+        shelfRow.move(dx)
     }
 
-    /** OK on the shelf: resume the episode (or play the video) the app published. */
+    /** OK on a card: resume the episode (or play the video) the app published. */
     private fun playShelf() {
-        val item = shelfItems.getOrNull(shelfIndex) ?: return
+        val item = shelfRow.current() ?: return
         val uri = item.intent ?: return
         val pkg = shelfPkg
         setShelfFocus(false)
