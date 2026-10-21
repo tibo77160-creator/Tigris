@@ -13,8 +13,8 @@ import android.widget.TextView
 
 /**
  * The Top Shelf as cards above the dock, the way Netflix and the Apple TV app show "Up Next":
- * a heading ("Reprendre sur Netflix") and three 16:9 cards spanning the width of the dock,
- * each with its title, episode and progress bar.
+ * three 16:9 cards spanning the width of the dock, each with its title, episode and progress bar.
+ * There is no heading on screen (the dock already shows which app the cards belong to).
  * The home picture stays behind it. Up from the dock focuses the cards; see HomeActivity.
  */
 class ShelfRow(ctx: Context, sw: Int, sh: Int, private val side: Int, dockTop: Int) : FrameLayout(ctx) {
@@ -45,14 +45,14 @@ class ShelfRow(ctx: Context, sw: Int, sh: Int, private val side: Int, dockTop: I
         clipToPadding = false
         alpha = 0f
         visibility = View.INVISIBLE
-        val titleTop = (sh * 0.165f).toInt()
-        val cardsTop = titleTop + ctx.dp(44)
+        val top = (sh * 0.165f).toInt()
         val labels = ctx.dp(50)
         val bottom = dockTop - ctx.dp(24)
         val avail = sw - side * 2
         cardW = (avail - gap * 2) / 3
-        imgH = minOf(bottom - cardsTop - labels, cardW * 9 / 16)
-        addView(heading, LayoutParams(avail, LayoutParams.WRAP_CONTENT).apply { leftMargin = side; topMargin = titleTop })
+        imgH = minOf(bottom - top - labels, cardW * 9 / 16)
+        // No heading on screen: the cards sit just above the dock and the picture breathes above them.
+        val cardsTop = bottom - labels - imgH
         addView(row, LayoutParams(LayoutParams.MATCH_PARENT, imgH + labels + ctx.dp(20)).apply {
             leftMargin = side; topMargin = cardsTop
         })
