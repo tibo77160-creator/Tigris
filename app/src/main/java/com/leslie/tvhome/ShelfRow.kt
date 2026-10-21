@@ -13,8 +13,8 @@ import android.widget.TextView
 
 /**
  * The Top Shelf as cards above the dock, the way Netflix and the Apple TV app show "Up Next":
- * a heading ("Reprendre sur Netflix"), one large 16:9 card for the latest series and two
- * smaller portrait cards for the next ones, each with its title, episode and progress bar.
+ * a heading ("Reprendre sur Netflix") and three 16:9 cards side by side, each with its
+ * title, episode and progress bar.
  * The home picture stays behind it. Up from the dock focuses the cards; see HomeActivity.
  */
 class ShelfRow(ctx: Context, sw: Int, sh: Int, private val side: Int, dockTop: Int) : FrameLayout(ctx) {
@@ -31,8 +31,7 @@ class ShelfRow(ctx: Context, sw: Int, sh: Int, private val side: Int, dockTop: I
     private val cards = ArrayList<Card>()
     private val gap = ctx.dp(18)
     private val imgH: Int
-    private val bigW: Int
-    private val smallW: Int
+    private val cardW: Int
 
     var items: List<Shelf.Item> = emptyList()
         private set
@@ -51,9 +50,8 @@ class ShelfRow(ctx: Context, sw: Int, sh: Int, private val side: Int, dockTop: I
         val labels = ctx.dp(50)
         val bottom = dockTop - ctx.dp(24)
         val avail = sw - side * 2
-        imgH = minOf(bottom - cardsTop - labels, ((avail - gap * 2) / 3.3f).toInt())
-        bigW = imgH * 16 / 9
-        smallW = imgH * 3 / 4
+        imgH = minOf(bottom - cardsTop - labels, ((avail * 0.82f - gap * 2) * 9 / 48f).toInt())
+        cardW = imgH * 16 / 9
         addView(heading, LayoutParams(avail, LayoutParams.WRAP_CONTENT).apply { leftMargin = side; topMargin = titleTop })
         addView(row, LayoutParams(LayoutParams.MATCH_PARENT, imgH + labels + ctx.dp(20)).apply {
             leftMargin = side; topMargin = cardsTop
@@ -68,8 +66,7 @@ class ShelfRow(ctx: Context, sw: Int, sh: Int, private val side: Int, dockTop: I
         row.removeAllViews()
         cards.clear()
         items.forEachIndexed { i, item ->
-            val big = i == 0
-            val card = Card(context, if (big) bigW else smallW, imgH, item, big)
+            val card = Card(context, cardW, imgH, item)
             cards += card
             row.addView(card, LinearLayout.LayoutParams(card.w, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                 if (i > 0) marginStart = gap
@@ -78,10 +75,8 @@ class ShelfRow(ctx: Context, sw: Int, sh: Int, private val side: Int, dockTop: I
         refreshLook()
     }
 
-    /** Each card with the picture it should show: the wide thumbnail for the big one, a poster for the others. */
-    fun cardTargets(): List<Pair<Card, String>> = cards.map { c ->
-        c to (if (c.big) c.item.image else c.item.poster ?: c.item.image)
-    }
+    /** Each card with the wide thumbnail it should show. */
+    fun cardTargets(): List<Pair<Card, String>> = cards.map { c -> c to c.item.image }
 
     fun current(): Shelf.Item? = items.getOrNull(selected)
 
@@ -111,7 +106,7 @@ class ShelfRow(ctx: Context, sw: Int, sh: Int, private val side: Int, dockTop: I
         cards.forEachIndexed { i, c -> c.look(selected = focused && i == selected, dim = focused && i != selected) }
     }
 
-    class Card(ctx: Context, val w: Int, h: Int, val item: Shelf.Item, val big: Boolean) : LinearLayout(ctx) {
+    class Card(ctx: Context, val w: Int, h: Int, val item: Shelf.Item) : LinearLayout(ctx) {
         private val radius = ctx.dp(14).toFloat()
         private val img = ImageView(ctx).apply {
             scaleType = ImageView.ScaleType.CENTER_CROP
@@ -145,14 +140,14 @@ class ShelfRow(ctx: Context, sw: Int, sh: Int, private val side: Int, dockTop: I
             holder.addView(frame, FrameLayout.LayoutParams(w, h))
             holder.addView(ring, FrameLayout.LayoutParams(w, h))
             addView(holder, LayoutParams(w, h))
-            val title = ctx.text(if (big) 18f else 16f, weight = 600).apply {
+            val title = ctx.text(17f, weight = 600).apply {
                 text = item.title
                 maxLines = 1
                 ellipsize = TextUtils.TruncateAt.END
                 setShadowLayer(ctx.dp(6).toFloat(), 0f, 0f, Color.argb(140, 0, 0, 0))
             }
             val meta = ctx.text(13f, Color.argb(185, 255, 255, 255), weight = 500).apply {
-                text = if (big) item.meta else item.short
+                text = item.meta
                 maxLines = 1
                 ellipsize = TextUtils.TruncateAt.END
                 setShadowLayer(ctx.dp(6).toFloat(), 0f, 0f, Color.argb(140, 0, 0, 0))
