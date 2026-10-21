@@ -1,5 +1,6 @@
 package com.leslie.tvhome
 
+import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -33,16 +34,20 @@ import kotlin.math.roundToInt
  * the input source. Opened with Back (or Menu) on the home screen, or the
  * toggles icon in the top-right.
  */
+/** The Control Center is drawn at 75 % of its original tvOS size, so it covers less of the picture. */
+const val CC_SCALE = 0.75f
+fun Context.ccdp(v: Number): Int = dp(v.toFloat() * CC_SCALE)
+
 class ControlCenter(private val home: HomeActivity, private val host: FrameLayout) {
     private val ctx = home
     private val prefs = Prefs(ctx)
-    private val radius = ctx.dp(34).toFloat()
-    private val width = ctx.dp(440)
+    private val radius = ctx.ccdp(34).toFloat()
+    private val width = ctx.ccdp(440)
 
     private val scrim = View(ctx).apply {
         setBackgroundColor(Color.argb(70, 0, 0, 0))
         alpha = 0f
-        translationZ = ctx.dp(100).toFloat()
+        translationZ = ctx.ccdp(100).toFloat()
     }
     private val glass = GlassDrawable()
     private val panel = LinearLayout(ctx).apply {
@@ -50,21 +55,21 @@ class ControlCenter(private val home: HomeActivity, private val host: FrameLayou
         background = glass
         clipChildren = false
         clipToPadding = false
-        setPadding(ctx.dp(26), ctx.dp(22), ctx.dp(26), ctx.dp(24))
+        setPadding(ctx.ccdp(26), ctx.ccdp(22), ctx.ccdp(26), ctx.ccdp(24))
         outlineProvider = android.view.ViewOutlineProvider.BACKGROUND
-        elevation = ctx.dp(30).toFloat()
-        translationZ = ctx.dp(100).toFloat()
+        elevation = ctx.ccdp(30).toFloat()
+        translationZ = ctx.ccdp(100).toFloat()
         alpha = 0f
     }
-    private val clock = ctx.text(30f, weight = 600).apply { letterSpacing = -0.01f }
-    private val date = ctx.text(15f, Color.argb(160, 255, 255, 255), weight = 500)
+    private val clock = ctx.text(30f * CC_SCALE, weight = 600).apply { letterSpacing = -0.01f }
+    private val date = ctx.text(15f * CC_SCALE, Color.argb(160, 255, 255, 255), weight = 500)
     private val memButton: RoundButton
     private val brightness: Slider
     private val volume: Slider
     private val inputModule: Module
     private var inputs: List<Bravia.Input> = emptyList()
     private var volumeTarget = "speaker"
-    private val status = ctx.text(12f, Color.argb(120, 255, 255, 255))
+    private val status = ctx.text(12f * CC_SCALE, Color.argb(120, 255, 255, 255))
     private val focusables = ArrayList<View>()
     private val io = Executors.newSingleThreadExecutor()
     private val tv = TvControls(ctx)
@@ -94,8 +99,8 @@ class ControlCenter(private val home: HomeActivity, private val host: FrameLayou
     init {
         val header = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.BOTTOM }
         header.addView(clock)
-        header.addView(date, LinearLayout.LayoutParams(-2, -2).apply { marginStart = ctx.dp(12); bottomMargin = ctx.dp(3) })
-        panel.addView(header, LinearLayout.LayoutParams(-2, -2).apply { bottomMargin = ctx.dp(18) })
+        header.addView(date, LinearLayout.LayoutParams(-2, -2).apply { marginStart = ctx.ccdp(12); bottomMargin = ctx.ccdp(3) })
+        panel.addView(header, LinearLayout.LayoutParams(-2, -2).apply { bottomMargin = ctx.ccdp(18) })
 
         val circles = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; clipChildren = false }
         fun circle(label: String, icon: Int, action: () -> Unit) =
@@ -117,19 +122,19 @@ class ControlCenter(private val home: HomeActivity, private val host: FrameLayou
             ctx.startActivity(Intent(ctx, SettingsActivity::class.java))
         }
         panel.addView(circles, LinearLayout.LayoutParams(-1, -2).apply {
-            leftMargin = -ctx.dp(6); rightMargin = -ctx.dp(6)
+            leftMargin = -ctx.ccdp(6); rightMargin = -ctx.ccdp(6)
         })
 
         brightness = Slider(R.drawable.ic_sun, "Luminosité") { v -> tv.setBrightness(v) }.also { focusables += it }
-        panel.addView(brightness, LinearLayout.LayoutParams(-1, ctx.dp(54)).apply { topMargin = ctx.dp(6) })
+        panel.addView(brightness, LinearLayout.LayoutParams(-1, ctx.ccdp(54)).apply { topMargin = ctx.ccdp(6) })
         volume = Slider(R.drawable.ic_volume, "Volume", steps = 50) { v -> tv.setVolume(volumeTarget, v) }.also { focusables += it }
-        panel.addView(volume, LinearLayout.LayoutParams(-1, ctx.dp(54)).apply { topMargin = ctx.dp(12) })
+        panel.addView(volume, LinearLayout.LayoutParams(-1, ctx.ccdp(54)).apply { topMargin = ctx.ccdp(12) })
 
         inputModule = Module(R.drawable.ic_input, Color.rgb(10, 132, 255), "Sources") { pickInput() }.also { focusables += it }
         inputModule.sub.visibility = View.VISIBLE
-        panel.addView(inputModule, LinearLayout.LayoutParams(-1, -2).apply { topMargin = ctx.dp(14) })
+        panel.addView(inputModule, LinearLayout.LayoutParams(-1, -2).apply { topMargin = ctx.ccdp(14) })
 
-        panel.addView(status, LinearLayout.LayoutParams(-2, -2).apply { topMargin = ctx.dp(14); leftMargin = ctx.dp(4) })
+        panel.addView(status, LinearLayout.LayoutParams(-2, -2).apply { topMargin = ctx.ccdp(14); leftMargin = ctx.ccdp(4) })
 
         // The focused control lights up the glass around it; the light glides to the next one.
         host.viewTreeObserver.addOnGlobalFocusChangeListener { _, now -> if (isOpen && now != null) glowAt(now) }
@@ -157,7 +162,7 @@ class ControlCenter(private val home: HomeActivity, private val host: FrameLayou
                 glass.glowX = if (fromA == 0f) r.exactCenterX() else fromX + (r.exactCenterX() - fromX) * f
                 glass.glowY = if (fromA == 0f) r.exactCenterY() else fromY + (r.exactCenterY() - fromY) * f
                 glass.glow = fromA + (1f - fromA) * f
-                glass.glowR = max(r.width(), r.height()) * 0.5f + ctx.dp(110)
+                glass.glowR = max(r.width(), r.height()) * 0.5f + ctx.ccdp(110)
                 panel.invalidate()
             }
             start()
@@ -182,7 +187,7 @@ class ControlCenter(private val home: HomeActivity, private val host: FrameLayou
         private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
         private val glowEdge = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
-            strokeWidth = ctx.dp(2).toFloat()
+            strokeWidth = ctx.ccdp(2).toFloat()
         }
         private val bmpPaint = Paint(Paint.FILTER_BITMAP_FLAG).apply {
             colorFilter = ColorMatrixColorFilter(ColorMatrix().apply { setSaturation(1.7f) })
@@ -190,7 +195,7 @@ class ControlCenter(private val home: HomeActivity, private val host: FrameLayou
         private val tint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(118, 22, 22, 24) }
         private val edge = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
-            strokeWidth = ctx.dp(1.2f).toFloat()
+            strokeWidth = ctx.ccdp(1.2f).toFloat()
         }
         private val path = Path()
         private val r = RectF()
@@ -251,12 +256,12 @@ class ControlCenter(private val home: HomeActivity, private val host: FrameLayou
 
     /** A round, icon-only button; its name fades in below it when focused. */
     private inner class RoundButton(private val label: String, icon: Int, action: () -> Unit) : LinearLayout(ctx) {
-        private val size = ctx.dp(58)
+        private val size = ctx.ccdp(58)
         private val disc = FrameLayout(ctx).apply {
             background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.argb(46, 255, 255, 255)) }
         }
         private val img = ImageView(ctx).apply { setImageResource(icon); setColorFilter(Color.WHITE) }
-        private val name = ctx.text(13f, weight = 500).apply { text = label; alpha = 0f; gravity = Gravity.CENTER; maxLines = 1 }
+        private val name = ctx.text(13f * CC_SCALE, weight = 500).apply { text = label; alpha = 0f; gravity = Gravity.CENTER; maxLines = 1 }
         private val reset = Runnable { name.text = label; if (!isFocused) name.animate().alpha(0f).start() }
 
         init {
@@ -265,17 +270,17 @@ class ControlCenter(private val home: HomeActivity, private val host: FrameLayou
             clipChildren = false
             isFocusable = true
             isClickable = true
-            disc.addView(img, FrameLayout.LayoutParams(ctx.dp(26), ctx.dp(26), Gravity.CENTER))
+            disc.addView(img, FrameLayout.LayoutParams(ctx.ccdp(26), ctx.ccdp(26), Gravity.CENTER))
             addView(disc, LayoutParams(size, size))
-            addView(name, LayoutParams(-2, -2).apply { topMargin = ctx.dp(10) })
+            addView(name, LayoutParams(-2, -2).apply { topMargin = ctx.ccdp(10) })
             setOnClickListener { action() }
             setOnFocusChangeListener { _, f ->
                 (disc.background as GradientDrawable).setColor(if (f) Color.WHITE else Color.argb(46, 255, 255, 255))
                 img.setColorFilter(if (f) Color.BLACK else Color.WHITE)
                 val s = if (f) 1.14f else 1f
-                disc.animate().scaleX(s).scaleY(s).translationZ(if (f) ctx.dp(10).toFloat() else 0f)
+                disc.animate().scaleX(s).scaleY(s).translationZ(if (f) ctx.ccdp(10).toFloat() else 0f)
                     .setDuration(220).setInterpolator(if (f) Motion.spring else Motion.ease).start()
-                name.animate().alpha(if (f) 1f else 0f).translationY(if (f) ctx.dp(4).toFloat() else 0f).setDuration(160).start()
+                name.animate().alpha(if (f) 1f else 0f).translationY(if (f) ctx.ccdp(4).toFloat() else 0f).setDuration(160).start()
             }
         }
 
@@ -290,10 +295,10 @@ class ControlCenter(private val home: HomeActivity, private val host: FrameLayou
 
     /** A wide rounded module: coloured icon badge, title, optional subtitle. */
     private open inner class Module(icon: Int, badge: Int, label: String, action: () -> Unit) : LinearLayout(ctx) {
-        private val idle = rounded(Color.argb(40, 255, 255, 255), ctx.dp(24).toFloat())
-        private val focus = rounded(Color.WHITE, ctx.dp(24).toFloat())
-        protected val title = ctx.text(17f, weight = 600).apply { text = label }
-        val sub: TextView = ctx.text(13f, Color.argb(150, 255, 255, 255), weight = 500).apply { visibility = GONE }
+        private val idle = rounded(Color.argb(40, 255, 255, 255), ctx.ccdp(24).toFloat())
+        private val focus = rounded(Color.WHITE, ctx.ccdp(24).toFloat())
+        protected val title = ctx.text(17f * CC_SCALE, weight = 600).apply { text = label }
+        val sub: TextView = ctx.text(13f * CC_SCALE, Color.argb(150, 255, 255, 255), weight = 500).apply { visibility = GONE }
         protected val body = LinearLayout(ctx).apply { orientation = VERTICAL; gravity = Gravity.CENTER_VERTICAL }
 
         init {
@@ -302,23 +307,23 @@ class ControlCenter(private val home: HomeActivity, private val host: FrameLayou
             isFocusable = true
             isClickable = true
             background = idle
-            minimumHeight = ctx.dp(70)
-            setPadding(ctx.dp(14), ctx.dp(12), ctx.dp(20), ctx.dp(12))
+            minimumHeight = ctx.ccdp(70)
+            setPadding(ctx.ccdp(14), ctx.ccdp(12), ctx.ccdp(20), ctx.ccdp(12))
             val badgeView = FrameLayout(ctx).apply {
                 background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(badge) }
                 addView(ImageView(ctx).apply { setImageResource(icon); setColorFilter(Color.WHITE) },
-                    FrameLayout.LayoutParams(ctx.dp(22), ctx.dp(22), Gravity.CENTER))
+                    FrameLayout.LayoutParams(ctx.ccdp(22), ctx.ccdp(22), Gravity.CENTER))
             }
-            addView(badgeView, LayoutParams(ctx.dp(42), ctx.dp(42)).apply { marginEnd = ctx.dp(14) })
+            addView(badgeView, LayoutParams(ctx.ccdp(42), ctx.ccdp(42)).apply { marginEnd = ctx.ccdp(14) })
             body.addView(title)
-            body.addView(sub, LayoutParams(-2, -2).apply { topMargin = ctx.dp(4) })
+            body.addView(sub, LayoutParams(-2, -2).apply { topMargin = ctx.ccdp(4) })
             addView(body, LayoutParams(0, -2, 1f))
             setOnClickListener { action() }
             setOnFocusChangeListener { _, f ->
                 background = if (f) focus else idle
                 tint(f)
                 animate().scaleX(if (f) 1.05f else 1f).scaleY(if (f) 1.05f else 1f)
-                    .translationZ(if (f) ctx.dp(12).toFloat() else 0f)
+                    .translationZ(if (f) ctx.ccdp(12).toFloat() else 0f)
                     .setDuration(220).setInterpolator(if (f) Motion.spring else Motion.ease).start()
             }
         }
@@ -339,11 +344,11 @@ class ControlCenter(private val home: HomeActivity, private val host: FrameLayou
         private val steps: Int = 25,
         private val send: (Int) -> Unit,
     ) : FrameLayout(ctx) {
-        private val corner = ctx.dp(27).toFloat()
+        private val corner = ctx.ccdp(27).toFloat()
         private val fill = View(ctx)
         private val img = ImageView(ctx).apply { setImageResource(icon) }
-        private val nameText = ctx.text(15f, weight = 600).apply { text = label }
-        private val valueText = ctx.text(15f, weight = 600)
+        private val nameText = ctx.text(15f * CC_SCALE, weight = 600).apply { text = label }
+        private val valueText = ctx.text(15f * CC_SCALE, weight = 600)
         private var value = 0
         private var min = 0
         private var max = 100
@@ -372,13 +377,13 @@ class ControlCenter(private val home: HomeActivity, private val host: FrameLayou
             clipRounded(corner)
             background = rounded(Color.argb(40, 255, 255, 255), corner)
             addView(fill, LayoutParams(0, -1))
-            addView(img, LayoutParams(ctx.dp(24), ctx.dp(24), Gravity.CENTER_VERTICAL or Gravity.START).apply { marginStart = ctx.dp(18) })
-            addView(nameText, LayoutParams(-2, -2, Gravity.CENTER_VERTICAL or Gravity.START).apply { marginStart = ctx.dp(54) })
-            addView(valueText, LayoutParams(-2, -2, Gravity.CENTER_VERTICAL or Gravity.END).apply { marginEnd = ctx.dp(20) })
+            addView(img, LayoutParams(ctx.ccdp(24), ctx.ccdp(24), Gravity.CENTER_VERTICAL or Gravity.START).apply { marginStart = ctx.ccdp(18) })
+            addView(nameText, LayoutParams(-2, -2, Gravity.CENTER_VERTICAL or Gravity.START).apply { marginStart = ctx.ccdp(54) })
+            addView(valueText, LayoutParams(-2, -2, Gravity.CENTER_VERTICAL or Gravity.END).apply { marginEnd = ctx.ccdp(20) })
             setOnFocusChangeListener { _, f ->
                 background = rounded(Color.argb(if (f) 70 else 40, 255, 255, 255), corner)
                 animate().scaleX(if (f) 1.05f else 1f).scaleY(if (f) 1.05f else 1f)
-                    .translationZ(if (f) ctx.dp(12).toFloat() else 0f)
+                    .translationZ(if (f) ctx.ccdp(12).toFloat() else 0f)
                     .setDuration(220).setInterpolator(if (f) Motion.spring else Motion.ease).start()
                 draw()
             }
@@ -462,9 +467,9 @@ class ControlCenter(private val home: HomeActivity, private val host: FrameLayou
             fill.setBackgroundColor(if (isFocused) Color.WHITE else Color.argb(215, 255, 255, 255))
             // Glyphs the fill has reached turn dark, as on iOS.
             val dark = Color.argb(220, 0, 0, 0)
-            img.setColorFilter(if (w > ctx.dp(42)) dark else Color.WHITE)
-            nameText.setTextColor(if (w > ctx.dp(54) + nameText.width) dark else Color.WHITE)
-            valueText.setTextColor(if (w > width - ctx.dp(20)) dark else Color.WHITE)
+            img.setColorFilter(if (w > ctx.ccdp(42)) dark else Color.WHITE)
+            nameText.setTextColor(if (w > ctx.ccdp(54) + nameText.width) dark else Color.WHITE)
+            valueText.setTextColor(if (w > width - ctx.ccdp(20)) dark else Color.WHITE)
         }
     }
 
@@ -479,9 +484,9 @@ class ControlCenter(private val home: HomeActivity, private val host: FrameLayou
         home.setGridBlocked(true)
         host.addView(scrim, FrameLayout.LayoutParams(-1, -1))
         host.addView(panel, FrameLayout.LayoutParams(width, -2, Gravity.TOP or Gravity.END).apply {
-            topMargin = ctx.dp(26); marginEnd = ctx.dp(26)
+            topMargin = ctx.ccdp(26); marginEnd = ctx.ccdp(26)
         })
-        panel.translationX = ctx.dp(60).toFloat()
+        panel.translationX = ctx.ccdp(60).toFloat()
         panel.scaleX = 0.96f
         panel.scaleY = 0.96f
         panel.pivotX = width.toFloat()
@@ -500,7 +505,7 @@ class ControlCenter(private val home: HomeActivity, private val host: FrameLayou
         brightness.finishAnimation()
         volume.finishAnimation()
         scrim.animate().alpha(0f).setDuration(180).start()
-        panel.animate().alpha(0f).translationX(ctx.dp(60).toFloat()).scaleX(0.96f).scaleY(0.96f).setDuration(200)
+        panel.animate().alpha(0f).translationX(ctx.ccdp(60).toFloat()).scaleX(0.96f).scaleY(0.96f).setDuration(200)
             .setUpdateListener { panel.invalidate() }
             .withEndAction {
                 host.removeView(scrim)
