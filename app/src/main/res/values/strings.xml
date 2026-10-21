@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="app_name">Tigris</string>
+    <string name="settings_name">Réglages de l\'accueil</string>
+    <string name="wallpaper_name">Fond d\'écran</string>
+    <string name="guard_name">Garde de l\'écran d\'accueil</string>
+    <string name="guard_description">Quand l\'accueil d\'origine de la TV passe devant, ramène cet écran d\'accueil. Regarde seulement quelle appli est au premier plan, sans lire le contenu de l\'écran.</string>
+</resources>
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
     <string name="app_name">主屏幕</string>
     <string name="settings_name">主屏幕设置</string>
     <string name="wallpaper_name">壁纸</string>
