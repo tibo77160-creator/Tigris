@@ -523,7 +523,6 @@ class HomeActivity : Activity(), TileAdapter.Listener {
         if (shelfFocus) setShelfFocus(false)
         focusedPos = pos
         val pkg = adapter.apps.getOrNull(pos)?.pkg
-        if (pkg != null) edges.show(repo.accent(pkg))
         main.removeCallbacks(shelfShow)
         if (pos < cols && pkg != null && Shelf.has(this, pkg) && moving < 0) {
             if (pkg != shelfPkg || !shelfShown) {
