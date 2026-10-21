@@ -35,6 +35,10 @@ object Shelf {
         val intent: String? = null,
         /** Watched share in percent, or -1 when unknown. */
         val progress: Int = -1,
+        /** Portrait artwork when the app publishes one (for the smaller cards). */
+        val poster: String? = null,
+        /** A shorter line for the smaller cards ("S2 · É5 · 32 min"). */
+        val short: String = "",
     )
 
     const val YOUTUBE = "com.google.android.youtube.tv"
@@ -128,7 +132,8 @@ object Shelf {
     private fun program(r: Row, kicker: String): Item? {
         if (r.str("browsable") == "0") return null
         val title = r.str("title") ?: return null
-        val image = r.str("thumbnail_uri") ?: r.str("poster_art_uri") ?: return null
+        val poster = r.str("poster_art_uri")
+        val image = r.str("thumbnail_uri") ?: poster ?: return null
         val season = r.str("season_display_number")
         val episode = r.str("episode_display_number")
         val episodeTitle = r.str("episode_title")
@@ -140,6 +145,10 @@ object Shelf {
             episodeTitle?.takeIf { it != title },
             if (started) left(duration - position) else null,
         ).joinToString(" · ")
+        val short = listOfNotNull(
+            if (season != null && episode != null) "S$season · É$episode" else episode?.let { "É$it" },
+            if (started) leftShort(duration - position) else null,
+        ).joinToString(" · ")
         return Item(
             kicker = kicker,
             title = title,
@@ -147,7 +156,14 @@ object Shelf {
             image = image,
             intent = r.str("intent_uri"),
             progress = if (started) (position * 100 / duration).toInt() else -1,
+            poster = poster,
+            short = short.ifEmpty { meta },
         )
+    }
+
+    private fun leftShort(ms: Long): String {
+        val min = (ms / 60_000).toInt().coerceAtLeast(1)
+        return if (min >= 60) "${min / 60} h ${"%02d".format(min % 60)}" else "$min min"
     }
 
     private fun left(ms: Long): String {
@@ -175,8 +191,9 @@ object Shelf {
                 videos += published to Item(
                     kicker = "YouTube · $author",
                     title = title,
-                    meta = ago(published),
+                    meta = "$author · ${ago(published)}",
                     image = "https://i.ytimg.com/vi/$vid/maxresdefault.jpg",
+                    short = ago(published),
                     intent = watch.toUri(Intent.URI_INTENT_SCHEME),
                 )
                 kept++
@@ -209,7 +226,7 @@ object Shelf {
     // ----------------------------------------------------------------------- pictures
 
     /** Downloads (or reads from the disk cache) an item's picture: a web address or a content:// image. */
-    fun image(ctx: Context, url: String): Bitmap? {
+    private fun cached(ctx: Context, url: String): File? {
         val dir = File(ctx.cacheDir, "shelf").apply { mkdirs() }
         val f = File(dir, Integer.toHexString(url.hashCode()) + ".jpg")
         if (!f.exists()) try {
@@ -226,11 +243,20 @@ object Shelf {
             Log.w("Shelf", "image $url failed", e)
             return null
         }
-        return BitmapFactory.decodeFile(f.path, BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 })
-            ?.let(::trimBars)
-            ?.let(::darken)
-            // Start the GPU upload now, off the frame that first shows it.
-            ?.also { it.prepareToDraw() }
+        return f
+    }
+
+    /** A card picture about [width] px wide (decoded at the nearest smaller power-of-two size). Off the main thread. */
+    fun thumb(ctx: Context, url: String, width: Int): Bitmap? {
+        val f = cached(ctx, url) ?: return null
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(f.path, bounds)
+        var sample = 1
+        while (bounds.outWidth / (sample * 2) >= width) sample *= 2
+        return BitmapFactory.decodeFile(f.path, BitmapFactory.Options().apply {
+            inSampleSize = sample
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        })?.let(::trimBars)?.also { it.prepareToDraw() }
     }
 
     /** Not every YouTube video has a full-HD thumbnail: fall back to the 720p one, then the standard one. */
@@ -240,17 +266,6 @@ object Shelf {
             try { return get(url.replace("maxresdefault", size)) } catch (e: Exception) { }
         }
         throw java.io.IOException("no thumbnail")
-    }
-
-    /**
-     * Bakes the scrim that keeps the title readable into the picture itself:
-     * a full-screen gradient layer on top would cost the TV's GPU three more
-     * full-screen passes on every frame of a cross-fade.
-     */
-    private fun darken(b: Bitmap): Bitmap {
-        val out = if (b.isMutable) b else b.copy(Bitmap.Config.ARGB_8888, true).also { b.recycle() }
-        ShelfScrim().apply { setBounds(0, 0, out.width, out.height) }.draw(android.graphics.Canvas(out))
-        return out
     }
 
     /** Some covers are letterboxed; cut the black bars so the picture fills the screen. */
